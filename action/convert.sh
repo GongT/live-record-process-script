@@ -5,58 +5,107 @@ set -Eeuo pipefail
 cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 source ../lib/inc.sh
 
-cd records
-mapfile -d '' FILES < <(find . -name '*.options' -print0 | sort --zero-terminated)
+function create_variables() {
+	if [[ ! $OUTPUT ]]; then
+		OUTPUT=$(read_title_from_file "$FIRST_FILE")
+	fi
+	local UTIME
+	UTIME=$(read_time_from_file "$FIRST_FILE")
 
-for I in "${FILES[@]}"; do
-	declare OPEN_TIME='00:00'
-	declare -i ENABLED='1'
-	declare -i LOCKED='0'
-	declare -a PARTS=()
-	declare OUTPUT=''
+	TITLE="$(date "--date=@$UTIME" '+%Y-%m-%d') $(escape_filename "$OUTPUT")"
+	echo_debug "$TITLE"
+
+	unset OUTPUT
+
+	DIST_DIR="$ROOT/compress/$(date "--date=@$UTIME" '+%Y-%m')"
+	TEMP_OUTPUT="/dev/shm/compress/${TITLE}.mp4"
+	DIST="$DIST_DIR/${TITLE}.mp4"
+}
+
+function output_exists() {
+	local SINGLE_EXTNAME
+	SINGLE_EXTNAME=$(extname "$FIRST_FILE")
+	if [[ -e "$DIST_DIR/${TITLE}.mp4" ]]; then
+		echo_debug "目标存在: $DIST_DIR/${TITLE}.mp4"
+		return
+	fi
+	if [[ -e "$DIST_DIR/${TITLE}.$SINGLE_EXTNAME" ]]; then
+		echo_debug "目标(链接)存在: $DIST_DIR/${TITLE}.$SINGLE_EXTNAME"
+		return
+	fi
+
+	return 1
+}
+
+function run_one() {
+	local OPEN_TIME='00:00'
+	local -i ENABLED='1'
+	local -a PARTS=()
+	local -a FILTERD_PARTS=()
+	local OUTPUT=''
 
 	# shellcheck source=/dev/null
 	source "$I"
 
 	if [[ $ENABLED == 0 ]] || [[ ${#PARTS[@]} -eq 0 ]]; then
-		continue
+		echo_debug "无输入\n\n"
+		return
 	fi
 
-	SINGLE_EXTNAME=$(extname "${PARTS[0]}")
-	if [[ ! $OUTPUT ]]; then
-		OUTPUT=$(read_title_from_file "${PARTS[0]}")
-	fi
-	UTIME=$(read_time_from_file "${PARTS[0]}")
+	local FILTERD_PARTS=("${PARTS[@]}")
+	local FIRST_FILE="${FILTERD_PARTS[0]}"
 
-	TITLE="$(date "--date=@$UTIME" '+%Y-%m-%d') $(escape_filename "$OUTPUT")"
-	DIST_DIR="$ROOT/compress/$(date "--date=@$UTIME" '+%Y-%m')"
-	if [[ -e "$DIST_DIR/${TITLE}.mp4" ]] || [[ -e "$DIST_DIR/${TITLE}.$SINGLE_EXTNAME" ]]; then
-		continue
+	local TITLE='' DIST_DIR='' DIST='' TEMP_OUTPUT=''
+	create_variables
+
+	if output_exists; then
+		return
 	fi
 
-	echo_info "$TITLE"
-	declare TOTAL_FILE_SIZE=0
-	for FILE in "${PARTS[@]}"; do
-		TOTAL_FILE_SIZE=$(float_add "$TOTAL_FILE_SIZE" "$(get_file_size "$FILE")")
-	done
-	echo "总文件大小: $TOTAL_FILE_SIZE"
-	if [[ ${TOTAL_FILE_SIZE%.*} -le "${MAX_FILE_SIZE%.*}" ]]; then
-		echo_success "文件大小符合要求"
-		if [[ ${#PARTS[@]} -eq 1 ]]; then
-			ensure_symlink "$DIST_DIR/${TITLE}.$SINGLE_EXTNAME" "${PARTS[0]}"
+	if [[ ${#FILTERD_PARTS[@]} -eq 1 ]]; then
+		local FILE_SIZE
+		FILE_SIZE="$(get_file_size "$FIRST_FILE")"
+		echo_debug " * $(basename "$FIRST_FILE") = $FILE_SIZE ($((FILE_SIZE / 1024 / 1024))M / $((FILE_SIZE / 1024 / 1024 / 1024))G)"
+		if [[ ${FILE_SIZE%.*} -le ${MAX_FILE_SIZE%.*} ]]; then
+			echo_success "单文件模式"
+
+			if [[ $OPEN_TIME == '00:00' ]]; then
+				echo_success "链接目标"
+				ensure_symlink "$DIST" "$FIRST_FILE"
+			else
+				echo_success "剪切文件: $OPEN_TIME"
+				ffmpeg_copy_streams "$OPEN_TIME" "$TEMP_OUTPUT" "$DIST"
+			fi
 		else
-			echo_success "简单连接文件"
-			concat_files "$DIST_DIR/${TITLE}.mp4" "${PARTS[@]}"
-			exit
+			echo_debug "单文件 | 过大"
 		fi
 	else
-		echo_success "文件需要压缩"
-		concat_compress_files "$DIST_DIR/${TITLE}.mp4" "${PARTS[@]}"
+		echo_debug "多文件"
 	fi
 
-	echo_success "完成！"
-	echo
-	echo
+	concat_compress_files "$OPEN_TIME" "$TEMP_OUTPUT" "${FILTERD_PARTS[@]}"
 
-	exit 233
+	if [[ $OPEN_TIME != '00:00' ]]; then
+		echo_success "剪切文件: $OPEN_TIME"
+		ffmpeg_copy_streams "$OPEN_TIME" "$TEMP_OUTPUT" "$DIST"
+		rm -f "$TEMP_OUTPUT"
+	else
+		echo_debug "移动结果文件"
+		mkdir -p "$(dirname "$DIST")"
+		mv "$TEMP_OUTPUT" "$DIST"
+	fi
+}
+
+export SCOPE="${1:-.}"
+cd records
+mapfile -d '' FILES < <(find "$SCOPE" -name '*.options' -print0 | sort --zero-terminated)
+
+for I in "${FILES[@]}"; do
+	echo -e "\e[38;5;12;7m$I\e[0m" >&2
+
+	run_one "$I"
+
+	echo -e "\e[38;5;10;7m完成\e[0m" >&2
+	echo
+	echo
 done

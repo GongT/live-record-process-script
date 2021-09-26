@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+declare -a _TMPFILES=()
+
 function callstack() {
 	local -i SKIP=${1-1}
 	local -i i
@@ -18,10 +20,22 @@ function _exit_handle() {
 	if [[ $RET -ne 0 ]]; then
 		callstack 0
 	fi
+
+	for F in "${_TMPFILES[@]}"; do
+		rm -f "$F"
+	done
+
 	exit $RET
 }
 
 trap _exit_handle EXIT
+
+function create_temp() {
+	local F
+	F=$(mktemp "--tmpdir=$CACHE_DIR/TEMP" "$@")
+	_TMPFILES+=("$F")
+	echo "$F"
+}
 
 function error() {
 	echo_error "$*"

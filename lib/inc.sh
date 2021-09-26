@@ -13,12 +13,20 @@ set -a
 source "$SCRIPT_ROOT/.env"
 set +a
 
+if [[ ! ${CACHE_DIR:-} ]]; then
+	declare -rx CACHE_DIR="/tmp"
+fi
+echo_debug "CACHE_DIR=$CACHE_DIR"
+export TMPDIR="$CACHE_DIR/TEMP"
+mkdir -p "$TMPDIR"
+
 if [[ ! ${LIVE_ROOT:-} ]] || [[ ! ${ROOM:-} ]]; then
 	die "缺少环境变量 [ $SCRIPT_ROOT/.env ]: LIVE_ROOT ROOM "
 fi
 
-declare -r ROOT="$LIVE_ROOT/$ROOM"
-cd "$ROOT" || die "录像目录不存在"
+_ROOT_DIR=$(realpath -e "$LIVE_ROOT/$ROOM") || die "录像目录不存在"
+cd "$_ROOT_DIR"
+declare -r ROOT="$_ROOT_DIR"
 
 function x() {
 	echo_debug " + $*"
@@ -33,12 +41,22 @@ function read_time_from_danmaku() {
 	date "--date=$start_time" +%s || error "文件 $F 中的时间格式无法解析: $start_time"
 }
 
-function read_time_from_video() {
-	local SOURCE_FILE="$1" MEDIA_START_TIME BASE_NAME S SDATE STIME
+function read_time_from_video_metadata() {
+	local SOURCE_FILE="$1" MEDIA_START_TIME
 	MEDIA_START_TIME=$(mediainfo --Output=JSON "$SOURCE_FILE" | jq -r '.media.track[].extra.StartTime| select(.)')
 
-	if [[ "$MEDIA_START_TIME" ]]; then
-		date "--date=$MEDIA_START_TIME" +%s || error "文件 $SOURCE_FILE 中的时间格式无法解析: $MEDIA_START_TIME"
+	if ! [[ "$MEDIA_START_TIME" ]]; then
+		# echo_debug "视频标签中没有启动时间: $SOURCE_FILE"
+		return 1
+	fi
+
+	date "--date=$MEDIA_START_TIME" +%s || error "文件 $SOURCE_FILE 中的时间格式无法解析: $MEDIA_START_TIME"
+}
+
+function read_time_from_video() {
+	local SOURCE_FILE="$1" BASE_NAME S SDATE STIME
+
+	if read_time_from_video_metadata "$SOURCE_FILE"; then
 		return
 	fi
 	# echo_debug "视频标签中没有启动时间: $SOURCE_FILE"
@@ -149,6 +167,7 @@ function extname() {
 
 function ensure_symlink() {
 	local LINK_FILE=$1 EXISTS_FILE=$2
+	echo_debug "$LINK_FILE --> $EXISTS_FILE"
 
 	if [[ ${EXISTS_FILE:0:1} == '/' ]]; then
 		die "链接目标是绝对路径: $EXISTS_FILE"
@@ -159,18 +178,21 @@ function ensure_symlink() {
 		die "链接文件不在项目目录中: $LINK_FILE"
 	fi
 	REL="${REL//[^\/]/}"
-	REL="${REL//'/'/../}"
-	REL+="$EXISTS_FILE"
+	REL="${REL//'/'/'../'}"
+
+	EXISTS_FILE=$(realpath -e "$EXISTS_FILE")
+	REL+="${EXISTS_FILE##"$ROOT/"}"
 
 	if [[ -L $LINK_FILE ]]; then
-		if [[ $(readlink "$LINK_FILE") != "$REL" ]]; then
-			echo_debug "重新创建链接: [$LINK_FILE]: $(readlink "$LINK_FILE") ==> $REL"
-			unlink "$LINK_FILE"
+		if [[ $(readlink "$LINK_FILE") == "$REL" ]]; then
+			return 0
 		fi
-		ln -vs "$REL" "$LINK_FILE"
+		echo_debug "重新创建链接: [$LINK_FILE]: $(readlink "$LINK_FILE") ==> $REL"
+		unlink "$LINK_FILE"
 	elif [[ -e $LINK_FILE ]]; then
 		die "目标文件存在，且不是一个符号链接: $LINK_FILE"
 	fi
+	ln -vs "$REL" "$LINK_FILE"
 }
 function float_add() {
 	local CURRENT=$1 ADD
@@ -181,7 +203,7 @@ function float_add() {
 			echo -n " + $ADD"
 		done
 		echo
-	} | bc
+	} | bc | awk '{printf "%f", $0}'
 }
 
 function get_file_size() {

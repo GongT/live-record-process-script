@@ -13,7 +13,7 @@ fi
 if ! systemctl is-active -q live-compress.service; then
 	systemctl reset-failed live-compress.service &>/dev/null || true
 	cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
-	systemd-run --unit=live-compress.service bash "$(pwd)/convert.sh"
+	systemd-run --nice=-10 --same-dir --unit=live-compress.service bash --login "$(pwd)/convert.sh" "$@"
 fi
 
-journalctl -f -ocat -u live-compress.service
+journalctl -f -ocat -u live-compress.service --lines=0

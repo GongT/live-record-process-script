@@ -29,6 +29,7 @@ function commit() {
 		{
 			echo "OPEN_TIME=$OPEN_TIME"
 			echo "ENABLED=$ENABLED"
+			echo "LOCKED=$LOCKED"
 			echo "PARTS=("
 			for I in "${FILE_ARR[@]}"; do
 				printf "\t%q\n" "$I"
