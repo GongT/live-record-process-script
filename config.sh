@@ -10,7 +10,3 @@ declare -r MAX_AUDIO_SIZE=$(echo "scale=4;0.1 * $MAX_FILE_SIZE" | bc)
 
 declare -ir MAX_VIDEO_BITRATE=$((20000 * 1024)) # ???kbps
 declare -ir MAX_AUDIO_BITRATE=$((320 * 1024))  # 320kbps
-
-if [[ ! ${CACHE_DIR:-} ]] && [[ "${SYSTEM_COMMON_CACHE:-}" ]]; then
-	CACHE_DIR="$SYSTEM_COMMON_CACHE/live-encoding"
-fi

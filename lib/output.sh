@@ -32,7 +32,7 @@ trap _exit_handle EXIT
 
 function create_temp() {
 	local F
-	F=$(mktemp "--tmpdir=$CACHE_DIR/TEMP" "$@")
+	F=$(mktemp "--tmpdir=$TMPDIR" "$@")
 	_TMPFILES+=("$F")
 	echo "$F"
 }

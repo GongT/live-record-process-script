@@ -2,6 +2,8 @@
 
 set -Eeuo pipefail
 
+env 
+
 cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 source ../lib/inc.sh
 
@@ -18,7 +20,7 @@ function create_variables() {
 	unset OUTPUT
 
 	DIST_DIR="$ROOT/compress/$(date "--date=@$UTIME" '+%Y-%m')"
-	TEMP_OUTPUT="/dev/shm/compress/${TITLE}.mp4"
+	TEMP_OUTPUT="$TMPDIR/compress/${TITLE}.mp4"
 	DIST="$DIST_DIR/${TITLE}.mp4"
 }
 
@@ -74,8 +76,9 @@ function run_one() {
 				ensure_symlink "$DIST" "$FIRST_FILE"
 			else
 				echo_success "剪切文件: $OPEN_TIME"
-				ffmpeg_copy_streams "$OPEN_TIME" "$TEMP_OUTPUT" "$DIST"
+				ffmpeg_copy_streams "$OPEN_TIME" "$FIRST_FILE" "$DIST"
 			fi
+			return
 		else
 			echo_debug "单文件 | 过大"
 		fi
@@ -88,7 +91,7 @@ function run_one() {
 	if [[ $OPEN_TIME != '00:00' ]]; then
 		echo_success "剪切文件: $OPEN_TIME"
 		ffmpeg_copy_streams "$OPEN_TIME" "$TEMP_OUTPUT" "$DIST"
-		rm -f "$TEMP_OUTPUT"
+		echo_error rm -f "$TEMP_OUTPUT"
 	else
 		echo_debug "移动结果文件"
 		mkdir -p "$(dirname "$DIST")"

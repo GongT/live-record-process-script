@@ -145,7 +145,7 @@ function encode_twopass() {
 		touch "$PASSLOG_OK_FILE"
 	fi
 
-	echo_info "第二次编码" "$OUTPUT"
+	echo_info "第二次编码"
 	mkdir -p "$(dirname "$DIST")"
 	x ffmpeg \
 		"${INPUT_ARGS[@]}" \
@@ -169,10 +169,11 @@ function concat_compress_files() {
 	shift
 
 	for FILE; do
-		DIFF_TIME=$(calc_diff "$LAST" "$FILE")
-		DIFF_FILE=$(create_diff_file "$DIFF_TIME")
+		DIFF_TIME=0
+		# DIFF_TIME=$(calc_diff "$LAST" "$FILE")
+		# DIFF_FILE=$(create_diff_file "$DIFF_TIME")
 
-		echo "file '$DIFF_FILE'" | tee -a "$TMPFILE"
+		# echo "file '$DIFF_FILE'" | tee -a "$TMPFILE"
 		echo "file '$(realpath --canonicalize-existing "$FILE")'" | tee -a "$TMPFILE"
 
 		TIME_SECONDS=$(float_add "$TIME_SECONDS" "$DIFF_TIME" "$(get_video_time_seconds "$FILE")")

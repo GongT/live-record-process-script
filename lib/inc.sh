@@ -14,10 +14,25 @@ source "$SCRIPT_ROOT/.env"
 set +a
 
 if [[ ! ${CACHE_DIR:-} ]]; then
-	declare -rx CACHE_DIR="/tmp"
+	if [[ "${SYSTEM_COMMON_CACHE:-}" ]]; then
+		declare -rx CACHE_DIR="$SYSTEM_COMMON_CACHE/live-encoding"
+	elif [[ ${STATE_DIRECTORY:-} ]]; then
+		declare -rx CACHE_DIR="$STATE_DIRECTORY"
+	else
+		declare -rx CACHE_DIR="$TMPDIR/cache"
+	fi
 fi
 echo_debug "CACHE_DIR=$CACHE_DIR"
-export TMPDIR="$CACHE_DIR/TEMP"
+
+if [[ ! ${TMPDIR:-} ]]; then
+	if [[ "${RUNTIME_DIRECTORY:-}" ]]; then
+		export TMPDIR="$RUNTIME_DIRECTORY"
+	else
+		export TMPDIR="$CACHE_DIR/TEMP"
+	fi
+fi
+echo_debug "TMPDIR=$TMPDIR"
+
 mkdir -p "$TMPDIR"
 
 if [[ ! ${LIVE_ROOT:-} ]] || [[ ! ${ROOM:-} ]]; then
